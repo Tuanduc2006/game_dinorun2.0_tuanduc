@@ -20,12 +20,17 @@ public class DinoController : MonoBehaviour
     public LayerMask whatIsGround;
     private bool isGrounded;
 
+    [Header("Âm thanh")]
+    public AudioSource audioSource; // Loa số 1: Dành cho tiếng nhảy
+    public AudioClip jumpSound;
+
+    public AudioSource runAudioSource; // Loa số 2 (MỚI): Dành cho tiếng chạy
+
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
         anim = GetComponent<Animator>();
 
-        // Tự động tìm GameManager nếu lỡ quên kéo thả ngoài Inspector
         if (gameManager == null)
         {
             gameManager = FindFirstObjectByType<GameManager>();
@@ -34,22 +39,41 @@ public class DinoController : MonoBehaviour
 
     void Update()
     {
-        // 1. NẾU GAME CHƯA BẮT ĐẦU: Không cho phép làm gì cả (Chặn lỗi bấm Start mà khủng long nhảy)
-        if (gameManager != null && !gameManager.isGameStarted) return;
+        // 1. NẾU GAME CHƯA BẮT ĐẦU HOẶC ĐÃ CHẾT: Tắt tiếng chạy và không làm gì cả
+        if (gameManager != null && (!gameManager.isGameStarted || anim.GetBool("isDead")))
+        {
+            if (runAudioSource != null && runAudioSource.isPlaying)
+            {
+                runAudioSource.Stop();
+            }
+            return;
+        }
 
-        // 2. NẾU ĐÃ CHẾT: Không cho nhảy nữa
-        if (anim.GetBool("isDead")) return;
-
-        // Kiểm tra xem khủng long có đang chạm đất không
+        // Kiểm tra xem khủng long có chạm đất không
         isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, whatIsGround);
 
-        // KHI CHẠM ĐẤT: Tắt hiệu ứng nhảy để chuyển về hiệu ứng chạy
+        // 2. XỬ LÝ TIẾNG BƯỚC CHÂN CHẠY
+        if (runAudioSource != null)
+        {
+            if (isGrounded)
+            {
+                // Nếu đang chạm đất mà nhạc chạy chưa bật thì bật lên
+                if (!runAudioSource.isPlaying) runAudioSource.Play();
+            }
+            else
+            {
+                // Nếu đang bay trên không thì tắt tiếng chạy
+                if (runAudioSource.isPlaying) runAudioSource.Stop();
+            }
+        }
+
+        // Tắt hiệu ứng nhảy khi chạm đất
         if (isGrounded && rb.linearVelocity.y <= 0)
         {
             anim.SetBool("isJumping", false);
         }
 
-        // KHI BẤM NHẢY: Lấy đà bật lên và bật hiệu ứng nhảy
+        // 3. KHI BẤM NHẢY
         if (Input.GetMouseButtonDown(0) && isGrounded)
         {
             isJumping = true;
@@ -57,9 +81,15 @@ public class DinoController : MonoBehaviour
             rb.linearVelocity = Vector2.up * jumpForce;
 
             anim.SetBool("isJumping", true);
+
+            // Phát tiếng nhảy
+            if (audioSource != null && jumpSound != null)
+            {
+                audioSource.PlayOneShot(jumpSound);
+            }
         }
 
-        // KHI GIỮ CHUỘT/CHẠM: Giúp nhảy cao hơn một chút
+        // Giữ phím để nhảy cao hơn
         if (Input.GetMouseButton(0) && isJumping)
         {
             if (jumpTimeCounter > 0)
@@ -73,22 +103,25 @@ public class DinoController : MonoBehaviour
             }
         }
 
-        // KHI THẢ TAY RA: Ngừng việc nhảy cao thêm
         if (Input.GetMouseButtonUp(0))
         {
             isJumping = false;
         }
     }
 
-    // HÀM XỬ LÝ VA CHẠM: Tự động chạy khi chạm vào chướng ngại vật
+    // KHI ĐÂM CHƯỚNG NGẠI VẬT
     private void OnTriggerEnter2D(Collider2D collision)
     {
         if (collision.CompareTag("Obstacle"))
         {
-            // Bật hiệu ứng chết (chuyển sang ảnh dino_hit)
             anim.SetBool("isDead", true);
 
-            // Báo cho GameManager đóng băng game
+            // Tắt ngay tiếng chạy khi chết
+            if (runAudioSource != null)
+            {
+                runAudioSource.Stop();
+            }
+
             if (gameManager != null)
             {
                 gameManager.GameOver();
